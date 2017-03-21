@@ -1,11 +1,128 @@
-# compose
+# generator.compose
 
-building generators using composition
+building generators using generator composition
 
 ## Version
 0.1.0
 
-Given a list of generators as parameters, `compose` returns a new generator that is the composition of its.
+## Introduction
+
+### Function composition
+
+A [univariate function](http://mathworld.wolfram.com/UnivariateFunction.html) is a function of one variable. Given two univariate functions `f` and `g`, the function composition (f ·g) is a function that for each `x`, it returns `f(g(x))`. Function composition is easy to extrapolate to multiple univariate functions: given `f1`, `f2`, ..., `fn` univariate functions, the function composition `(f1·f2·..·fn)` is a function that for each `x`, it returns `f1(f2(..fn(x)))`.
+
+In javascript functions are first-class objects. Then it is easy to create a function `compose` that receives a list of univariate functions and returns a function that is the composition of these functions:
+
+``` javascript
+function compose(...functions) {
+    return function (x) {
+        return functions.reduceRight(function(result, fn) {
+            return fn(result)
+        }, x)
+    }
+}
+```
+
+Then, if you define two univariate functions `add1` and `square`:
+
+``` javascript
+function add1 (x) {
+    return x + 1
+}
+
+function square (x) {
+    return x * x
+}
+```
+
+you can create composition of functions using `compose`:
+
+``` javascript
+// f(x) = x^2 + 1
+const f = compose(add1, square)
+
+// g(x) = (x + 1)^2
+const g = compose(square, add1)
+```
+
+### Generator composition
+
+However this package is not about function composition. This package is about the concept of **generator composition**. We can assume that [ES2015 generator](https://developer.mozilla.org/es/docs/Web/JavaScript/Guide/Iterators_and_Generators) it is a function that is able to return a list of values through an iterator object. Then, we can assume a generator composition as an extrapolation of function composition. First of all, let's go back to the `compose` function defined above. We can redefine the implementation thus:
+
+``` javascript
+function compose(...functions) {
+    return functions.reduceRight(function(resultFn, fn) {
+        return function(y) {
+            const val = resultFn(y)
+            return fn(val)
+        }
+    }, function (x) {
+        return x
+    })
+}
+```
+
+This implementation is more verbose than previous definition but is more useful to understand how is extrapolated to generator composition. Firstly, we can implement a version that works with univariate generators that returns an iterator that **just iterates over one value**. Assuming the previous constriction is easy to adapt replacing `return`s by `yield`s and `function` by `function*`:
+
+``` javascript
+function compose(...generators) {
+    return generators.reduceRight(function(resultGen, gen) {
+        return function* (y) {
+            const val = resultGen(y).next().value
+            yield* gen(val)
+        }
+    }, function* (x) {
+        yield x
+    })
+}
+```
+
+Then, we can take previous examples of `add1` and `square` and transform to generators:
+
+``` javascript
+function* add1 (x) {
+    yield x + 1
+}
+
+function* square (x) {
+    yield x * x
+}
+```
+
+Now we can use `composeGenerator` thus:
+
+``` javascript
+const f = compose(add1, square)
+const iteratorF = f(3)
+iteratorF.next() // returns {value: 10, done: false}
+
+const g = compose(square, add1)
+const iteratorG = g(3)
+iteratorG.next() // returns {value: 16, done: false}
+```
+
+However, the interesting thing is allowing that generators return iterators that iterates over more than one value. Given the previous `composeGenerator`, we have to change `const val = resultGen(y).next().value`:
+
+``` javascript
+function compose(...generators) {
+    return generators.reduceRight(function(resultGen, gen) {
+        return function* (y) {
+            for (const val of resultGen(y)) {
+                yield* gen(val)
+            }
+        }
+    }, function* (x) {
+        yield x
+    })
+}
+```
+
+### Ok, but what is it for?
+
+Generation composition can be used to create lazy cartesian product generator and problably another exponential patterns like permutations or combinations.
+
+
+## TO REMOVE:
 
 ### Repeated patterns using composition
 For example, if it is passed a list for two generators, second generator iterates its values for each value produced by first iterator:
